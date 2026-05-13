@@ -1,0 +1,7 @@
+{
+  "git": {
+    "flow": {},
+    "provider": "github",
+    "submodules": false
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "bot": {
+    "headless": true,
+    "debug": false,
+    "delay_between_queries_seconds": 1,
+    "max_retries": 2,
+    "max_rows": null,
+    "input_folder": "entrada",
+    "output_folder": "saida",
+    "timeout_navigation_ms": 30000,
+    "timeout_selector_ms": 15000,
+    "proxy": {
+      "enabled": false,
+      "server": null,
+      "username": null,
+      "password": null
+    },
+    "captcha": {
+      "mode": "manual",
+      "api_key": null
+    }
+  },
+  "sistemas": {
+    "valor": {
+      "name": "Valor Financiamentos",
+      "auth": {
+        "email": "usuario@email.com",
+        "password": "senha"
+      },
+      "excel": {
+        "cpf_column": "cpf",
+        "name_column": "nome"
+      },
+      "extras": {
+        "login_url": "https://www.valorscm.com.br/webagente+/index.php",
+        "dashboard_url": "https://www.valorscm.com.br/webagente+/dashboard.php",
+        "valid_status": ["DEFERIDO"],
+        "ignore_status": ["FINALIZADO", "CANCELADO"]
+      }
+    },
+    "bib": {
+      "name": "BIB",
+      "auth": {
+        "email": "usuario@email.com",
+        "password": "senha"
+      },
+      "excel": {
+        "cpf_column": "cpf",
+        "name_column": "nome"
+      },
+      "extras": {
+        "login_url": "https://www.bibcred.com.br/Funcao.WebAutorizador/Login/AC.UI.LOGIN.aspx",
+        "proposta_url": "https://www.bibcred.com.br/Funcao.WebAutorizador/MenuWeb/Cadastro/Proposta/UI.PropostaSintetizada.aspx?Origem3=007374",
+        "tipo_operacao": "Refinanciamento",
+        "grupo_convenio": "3",
+        "conveniada": "000086",
+        "secretaria": null
+      }
+    },
+    "consiglog": {
+      "name": "ConsigLog",
+      "auth": {
+        "email": "usuario",
+        "password": "senha"
+      },
+      "excel": {
+        "cpf_column": null,
+        "name_column": null,
+        "matricula_column": "matricula"
+      },
+      "extras": {
+        "login_url": "https://saec.consiglog.com.br/Login.aspx",
+        "selecao_url": "https://saec.consiglog.com.br/LoginSelecao.aspx",
+        "consulta_url": "https://saec.consiglog.com.br/Margem/ConsultaMargem.aspx",
+        "convenio_label": "PREFEITURA GOIÂNIA"
+      }
+    },
+    "econsig": {
+      "name": "Econsig",
+      "auth": {
+        "email": "usuario",
+        "password": "senha"
+      },
+      "excel": {
+        "cpf_column": null,
+        "name_column": null,
+        "matricula_column": "matricula"
+      },
+      "extras": {
+        "login_url": "https://portal.econsig.com.br/issa/v3/autenticarUsuario#no-back",
+        "consulta_url": "https://portal.econsig.com.br/issa/v3/consultarMargem#no-back",
+        "captcha_max_attempts": 5
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "metrics": {
+    "apiCalls": 30,
+    "toolBreakdown": {
+      "Write": 8,
+      "Edit": 12,
+      "Bash": 8,
+      "Agent": 2
+    },
+    "retries": 6,
+    "startedAt": "2026-05-13T14:34:44.898Z",
+    "updatedAt": "2026-05-13T14:42:35.804Z",
+    "agentAttempts": {
+      "EXECUTE": 6
+    }
+  },
+  "previousPhase": "EXECUTE"
+}
