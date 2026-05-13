@@ -43,22 +43,44 @@ def prompt_image_captcha(image_bytes: bytes, *, label: str = "captcha") -> str:
 
 
 def _render_image_in_terminal(path: Path) -> bool:
-    """Render an image inline in the terminal. Returns True on success."""
+    """Render an image inline in the terminal. Returns True on success.
+
+    Prefers kitty graphics > iTerm2 inline > unicode half-block. Skips sixel
+    explicitly because it renders poorly at small sizes on Windows Terminal.
+    """
     try:
         import warnings
-        from term_image.image import AutoImage
+        from term_image.image import BlockImage, ITerm2Image, KittyImage
         from PIL import Image
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # silence "not in a terminal" warning
+            warnings.simplefilter("ignore")
+
+            # Pick best-supported high-quality protocol, skipping sixel.
+            image_cls = BlockImage
+            try:
+                if KittyImage.is_supported():
+                    image_cls = KittyImage
+                elif ITerm2Image.is_supported():
+                    image_cls = ITerm2Image
+            except Exception:
+                pass
+
             pil_img = Image.open(path)
-            # Captchas are detailed — render tall (~20 rows) so distorted chars are legible.
-            # Modest size — large enough to read distorted chars, small enough not to dominate the terminal.
-            # Block chars are ~1:2 (h:w), so target_w ≈ aspect * target_h * 2.
             w, h = pil_img.size
-            target_h = 6
-            calculated_w = int(w * (target_h * 2) / max(h, 1))
-            target_w = max(24, min(36, calculated_w))
-            img = AutoImage(pil_img, width=target_w, height=target_h)
+
+            if image_cls is BlockImage:
+                # Block rendering benefits from upscale + slightly larger target.
+                pil_img = pil_img.resize((w * 3, h * 3), Image.NEAREST)
+                target_h = 8
+                calculated_w = int(w * (target_h * 2) / max(h, 1))
+                target_w = max(30, min(48, calculated_w))
+            else:
+                # iTerm2 / kitty render true bitmaps; small target is fine and sharp.
+                target_h = 6
+                calculated_w = int(w * (target_h * 2) / max(h, 1))
+                target_w = max(24, min(36, calculated_w))
+
+            img = image_cls(pil_img, width=target_w, height=target_h)
             _console.print("")
             print(img)
             _console.print("")

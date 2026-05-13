@@ -37,11 +37,11 @@ jobs:
       - name: Build EXE
         run: poetry run pyinstaller pyinstaller.spec --clean --noconfirm
 
-      - name: Package distribution
+      - name: Package distribution (onedir)
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force consig-bot-windows, consig-bot-windows\entrada, consig-bot-windows\saida | Out-Null
-          Copy-Item dist\consig-bot.exe consig-bot-windows\
+          Copy-Item -Recurse dist\consig-bot consig-bot-windows
+          New-Item -ItemType Directory -Force consig-bot-windows\entrada, consig-bot-windows\saida | Out-Null
           Copy-Item executar.bat consig-bot-windows\
           Copy-Item config.example.json consig-bot-windows\config.json
           Compress-Archive -Path consig-bot-windows -DestinationPath consig-bot-windows.zip -Force

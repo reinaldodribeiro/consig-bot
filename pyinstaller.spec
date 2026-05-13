@@ -61,20 +61,18 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Onedir build: EXE leva só o bootloader; COLLECT() junta binaries/datas em _internal/.
+# Resultado em dist/consig-bot/ — startup ~10x mais rápido que onefile (sem extração temp).
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="consig-bot",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -84,7 +82,18 @@ exe = EXE(
     icon=None,
 )
 
-# Para distribuicao final, copiar manualmente para o lado do .exe:
-#   - config.example.json
-#   - executar.bat (ajustado para .\\consig-bot.exe)
-#   - pastas vazias: entrada/, saida/, logs/, checkpoint/
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="consig-bot",
+)
+
+# Distribuicao final (dist/consig-bot/):
+#   consig-bot.exe         <- bootloader (~5 MB)
+#   _internal/             <- Python + libs + Chromium (~400 MB)
+# Copiar para o lado o config.json, executar.bat, entrada/, saida/.

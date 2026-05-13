@@ -86,13 +86,15 @@ Building EXE from EXE-00.toc completed successfully.
 
 ### 5. Conferir o resultado
 
-O executável fica em:
+A saída agora é uma **pasta** (build onedir — startup ~10x mais rápido que onefile):
 
 ```
-dist\consig-bot.exe
+dist\consig-bot\
+  consig-bot.exe         ← bootloader (~5 MB)
+  _internal\             ← Python + libs + Chromium (~400 MB)
 ```
 
-Tamanho esperado: **200-300 MB** (normal — o browser do Playwright está embutido).
+Tamanho total esperado: **~400 MB**. NÃO mover o `consig-bot.exe` pra fora da pasta — ele precisa do `_internal\` ao lado.
 
 ---
 
@@ -102,7 +104,8 @@ Tamanho esperado: **200-300 MB** (normal — o browser do Playwright está embut
 
 ```
 consig-bot-windows\
-  consig-bot.exe        ← de dist\
+  consig-bot.exe        ← de dist\consig-bot\
+  _internal\            ← de dist\consig-bot\ (pasta inteira)
   executar.bat          ← da raiz do repo
   config.json           ← copia de config.example.json com logins reais
   entrada\              ← pasta vazia (planilhas vão aqui)
@@ -115,8 +118,8 @@ Na raiz do repo, no PowerShell:
 
 ```powershell
 $out = "consig-bot-windows"
-New-Item -ItemType Directory -Force $out, "$out\entrada", "$out\saida" | Out-Null
-Copy-Item dist\consig-bot.exe $out\
+Copy-Item -Recurse dist\consig-bot $out
+New-Item -ItemType Directory -Force "$out\entrada", "$out\saida" | Out-Null
 Copy-Item executar.bat $out\
 Copy-Item config.example.json "$out\config.json"
 ```
@@ -145,8 +148,9 @@ Zipa a pasta `consig-bot-windows` e manda para o usuário.
 |---------|-------|---------|
 | `poetry: command not found` | PATH não recarregado | Feche e reabra o PowerShell |
 | Erro "Microsoft Visual C++ ..." em `poetry install` | Faltam tools de build | Instale [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) |
-| Antivírus bloqueia o `.exe` | PyInstaller onefile sem assinatura | Adicione exceção, ou use `--onedir` (rode `pyinstaller pyinstaller.spec --onedir ...`) |
+| Antivírus bloqueia o `.exe` | PyInstaller sem assinatura | Adicione exceção no Windows Defender pra pasta `consig-bot-windows\` |
 | `.exe` abre e fecha rápido | Erro no `config.json` | Rode pelo `executar.bat` (tem `pause`) ou pelo `cmd` manualmente |
+| `.exe` não acha `_internal\` | Bootloader separado da pasta | NÃO mover o `consig-bot.exe` pra fora da pasta — `_internal\` precisa ficar ao lado |
 | `playwright: command not found` no passo 3 | `poetry install` falhou | Volte ao passo 2 e veja o erro |
 | `.exe` quebra com `BrowserType.launch: Executable doesn't exist at ...\chrome-win\chrome.exe` | Browser instalado fora do pacote | Refaça passo 3 com `$env:PLAYWRIGHT_BROWSERS_PATH = "0"` ANTES do `playwright install`, depois passo 4 |
 | `.exe` muito grande | Esperado — browser embutido | Use `--onedir` se quiser uma pasta em vez de um único arquivo (mesmo tamanho total, mas startup mais rápido) |
@@ -156,6 +160,7 @@ Zipa a pasta `consig-bot-windows` e manda para o usuário.
 ## Notas técnicas
 
 - O `.exe` lê `config.json` e as pastas `entrada/saida/logs/checkpoint` **ao lado dele** (não embutidos).
-- Primeira execução pode demorar 10-20s descompactando o onefile na pasta temp.
-- Captcha do Econsig: renderização inline funciona melhor no **Windows Terminal** (sixel) que no `cmd.exe` antigo. No cmd, o fallback abre a imagem no visualizador padrão do Windows.
+- Build é **onedir** — startup ~1-3s em qualquer hardware (não extrai temp toda vez como onefile).
+- A pasta `_internal\` contém Python + libs + Chromium. **Não mexer**.
+- Captcha do Econsig: renderização inline funciona em Windows Terminal moderno. No `cmd.exe` antigo, cai pra block-char unicode (legível).
 - Para diminuir false positive de antivírus em distribuição ampla: assine o executável com um certificado de code-signing.

@@ -287,19 +287,27 @@ class EconsigBot(BaseBot):
         with contextlib.suppress(Exception):
             page.wait_for_load_state("networkidle", timeout=15_000)
 
-        # Wait until either an error span has content OR the data-list <dl> appears (success)
+        # Wait specifically: either error span has any text, OR success span has 'MARGEM' string.
+        # Generic "any content" returns too early — the page renders a card shell before the postback
+        # populates the spans, and we'd parse a half-rendered DOM.
         try:
             page.wait_for_function(
                 """() => {
                     const e = document.querySelector('span#idMsgErrorSession');
                     const eText = e ? (e.textContent || '').trim() : '';
-                    const dl = document.querySelector('dl.data-list');
-                    return eText.length > 0 || (dl && dl.children.length > 0);
+                    const s = document.querySelector('span#idMsgSuccessSession');
+                    const sText = s ? (s.textContent || '').toUpperCase() : '';
+                    return eText.length > 0 || sText.includes('MARGEM');
                 }""",
-                timeout=10_000,
+                timeout=15_000,
             )
         except Exception as exc:
-            logger.debug("Econsig: timeout aguardando resultado: {}", exc)
+            logger.warning("Econsig: timeout aguardando resultado (span ainda vazio): {}", exc)
+
+        # Small settling delay so the <dl> with cpf/data_nascimento (rendered slightly after the span)
+        # finishes populating before we read it.
+        with contextlib.suppress(Exception):
+            page.wait_for_timeout(400)
 
         # Check for session expiry after search
         if "autenticar" in page.url.lower():

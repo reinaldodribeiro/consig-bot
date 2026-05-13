@@ -18,60 +18,126 @@ class EconsigConsultaDados(TypedDict):
 
 _DATA_LIST_JS = """
 () => {
-    const dl = document.querySelector('dl.data-list');
+    // The page has multiple <dl class="data-list"> (a summary card + the result card).
+    // Prefer the one inside #consultaMargem; fall back to the <dl> with the most <dt> children.
+    let dl = document.querySelector('#consultaMargem dl.data-list');
+    if (!dl) {
+        const all = Array.from(document.querySelectorAll('dl.data-list'));
+        all.sort((a, b) => b.querySelectorAll('dt').length - a.querySelectorAll('dt').length);
+        dl = all[0] || null;
+    }
     if (!dl) return null;
+    const dts = dl.querySelectorAll('dt');
+    const dds = dl.querySelectorAll('dd');
     const out = {};
-    const kids = Array.from(dl.children);
-    for (let i = 0; i < kids.length - 1; i++) {
-        if (kids[i].tagName === 'DT' && kids[i+1].tagName === 'DD') {
-            const key = (kids[i].textContent || '').trim();
-            const value = (kids[i+1].textContent || '').replace(/\\u00a0/g, ' ').trim();
-            out[key] = value.replace(/\\s+/g, ' ');
-        }
+    const n = Math.min(dts.length, dds.length);
+    for (let i = 0; i < n; i++) {
+        const key = (dts[i].textContent || '').replace(/\\u00a0/g, ' ').trim();
+        const value = (dds[i].textContent || '').replace(/\\u00a0/g, ' ').trim();
+        out[key] = value.replace(/\\s+/g, ' ');
     }
     return out;
 }
 """
 
 
-def parse_consulta_success(page: Page) -> EconsigConsultaDados | None:
-    """Parse the result <dl class="data-list">.
-
-    Returns a dict with margens, data_nascimento, and cpf — or None if the <dl> is absent.
-    """
-    if page.locator(sel.DATA_LIST).count() == 0:
-        logger.info("parse_consulta_success: <dl.data-list> NÃO existe no DOM")
-        return None
+def _parse_margens_from_span(page: Page) -> EconsigMargens:
+    """Read the success message span and regex out MARGEM EMPRÉSTIMO and MARGEM CARTÃO."""
+    loc = page.locator(sel.MSG_SUCCESS)
+    if loc.count() == 0:
+        logger.info("_parse_margens_from_span: span#idMsgSuccessSession NÃO existe")
+        return EconsigMargens()
 
     try:
-        data = page.evaluate(_DATA_LIST_JS)
+        html = loc.first.inner_html(timeout=3000)
     except Exception as exc:
-        logger.warning("parse_consulta_success: evaluate error: {}", exc)
-        return None
+        logger.warning("_parse_margens_from_span: inner_html error: {}", exc)
+        return EconsigMargens()
 
-    if not data:
-        logger.info("parse_consulta_success: <dl.data-list> existe mas vazio")
-        return None
+    # Normalize <br> variants to newlines so the regex's [^\n<] terminator works.
+    html_normalised = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    # Strip <span class="Rotulo">R$</span> wrapper so the value comes through cleanly.
+    text = re.sub(r"<[^>]+>", "", html_normalised).replace("\u00a0", " ")
 
-    logger.info("parse_consulta_success: campos lidos={!r}", list(data.keys()))
+    def _extract(pattern: str) -> str:
+        m = re.search(pattern, text, re.IGNORECASE)
+        return m.group(1).strip() if m else ""
 
-    # Helper: case-insensitive key lookup (labels may shift in capitalization)
-    def _get(label_fragment: str) -> str:
-        frag = label_fragment.lower()
-        for k, v in data.items():
-            if frag in k.lower():
-                return v
-        return ""
+    margem_emprestimo = _extract(r"MARGEM\s+EMPR[EÉ]STIMO\s*:\s*([^\n]+)")
+    margem_cartao = _extract(r"MARGEM\s+CART[AÃ]O\s*:\s*([^\n]+)")
 
-    nasc_cpf_raw = _get("data de nascimento")  # "23/03/1952 - 617.361.121-04"
-    parts = [p.strip() for p in nasc_cpf_raw.split(" - ", 1)]
-    data_nascimento = parts[0] if len(parts) >= 1 else ""
-    cpf = parts[1] if len(parts) >= 2 else ""
-
-    margens = EconsigMargens(
-        margem_emprestimo=_get("margem empr"),  # matches EMPRÉSTIMO / EMPRESTIMO
-        margem_cartao=_get("margem cart"),       # matches CARTÃO / CARTAO
+    logger.info(
+        "_parse_margens_from_span: emprestimo={!r} cartao={!r}",
+        margem_emprestimo, margem_cartao,
     )
+    return EconsigMargens(margem_emprestimo=margem_emprestimo, margem_cartao=margem_cartao)
+
+
+def parse_consulta_success(page: Page) -> EconsigConsultaDados | None:
+    """Parse a successful Econsig query result.
+
+    - Margens are read from span#idMsgSuccessSession (via regex).
+    - CPF and data_nascimento are read from the <dl> inside #consultaMargem.
+    Returns None only if BOTH sources are absent (no result at all).
+    """
+    data_list_count = page.locator(sel.DATA_LIST).count()
+    span_count = page.locator(sel.MSG_SUCCESS).count()
+
+    # Diagnostic: what <dl>s and #consultaMargem actually exist right now?
+    try:
+        diag = page.evaluate("""() => {
+            const dls = Array.from(document.querySelectorAll('dl.data-list'));
+            const cm = document.querySelector('#consultaMargem');
+            return {
+                allDLs: dls.map(d => ({
+                    parent: d.parentElement ? (d.parentElement.id || d.parentElement.className) : '',
+                    dts: d.querySelectorAll('dt').length,
+                    firstDt: (d.querySelector('dt') || {}).textContent || '',
+                })),
+                hasConsultaMargem: !!cm,
+                consultaMargemHTML: cm ? cm.outerHTML.slice(0, 400) : null,
+                successSpanText: (document.querySelector('span#idMsgSuccessSession') || {}).textContent || '',
+            };
+        }""")
+        logger.info("parse_consulta_success [DIAG]: {!r}", diag)
+    except Exception as exc:
+        logger.debug("parse_consulta_success [DIAG] failed: {}", exc)
+
+    if data_list_count == 0 and span_count == 0:
+        logger.info("parse_consulta_success: nem <dl.data-list> nem span#idMsgSuccessSession no DOM")
+        return None
+
+    # --- Margens via span ---
+    margens = _parse_margens_from_span(page)
+
+    # --- CPF + data_nascimento via <dl> ---
+    data_nascimento = ""
+    cpf = ""
+    if data_list_count > 0:
+        try:
+            dl_data = page.evaluate(_DATA_LIST_JS)
+        except Exception as exc:
+            logger.warning("parse_consulta_success: evaluate error: {}", exc)
+            dl_data = None
+
+        if dl_data:
+            logger.info("parse_consulta_success: {} campos lidos do <dl>:", len(dl_data))
+            for k, v in dl_data.items():
+                logger.info("  {!r} => {!r}", k, v)
+
+            def _get(frag: str) -> str:
+                frag_lower = frag.lower()
+                for k, v in dl_data.items():
+                    if frag_lower in k.lower():
+                        return v
+                return ""
+
+            nasc_cpf_raw = _get("data de nascimento")
+            parts = [p.strip() for p in nasc_cpf_raw.split(" - ", 1)]
+            data_nascimento = parts[0] if len(parts) >= 1 else ""
+            cpf = parts[1] if len(parts) >= 2 else ""
+        else:
+            logger.info("parse_consulta_success: <dl> presente mas vazio")
 
     logger.info(
         "parse_consulta_success: emprestimo={!r} cartao={!r} nascimento={!r} cpf={!r}",
