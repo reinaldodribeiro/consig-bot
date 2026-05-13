@@ -33,10 +33,16 @@ def prompt_image_captcha(image_bytes: bytes, *, label: str = "captcha") -> str:
 
     logger.info("Captcha salvo em {}", path)
 
-    rendered = _render_image_in_terminal(path)
-    if not rendered:
+    # On Windows, terminal rendering quality (sixel/block) is poor — open the system viewer
+    # (Photos / default image app) directly. On Mac/Linux iTerm2/kitty give sharp inline rendering.
+    if sys.platform == "win32":
         _open_image_in_system_viewer(path)
-        _console.print(f"[yellow]Imagem aberta no viewer do sistema: {path}[/yellow]")
+        _console.print(f"[yellow]Imagem aberta no visualizador: {path}[/yellow]")
+    else:
+        rendered = _render_image_in_terminal(path)
+        if not rendered:
+            _open_image_in_system_viewer(path)
+            _console.print(f"[yellow]Imagem aberta no viewer do sistema: {path}[/yellow]")
 
     code = Prompt.ask("\n[cyan]Digite o código do captcha[/cyan]", default="")
     return code.strip()
