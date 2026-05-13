@@ -26,17 +26,13 @@ jobs:
             .venv
           key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~\AppData\Local\ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-v1
-
       - name: Install deps
         run: poetry install --no-root
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium (in-package so PyInstaller bundles it)
         run: poetry run playwright install chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: "0"
 
       - name: Build EXE
         run: poetry run pyinstaller pyinstaller.spec --clean --noconfirm

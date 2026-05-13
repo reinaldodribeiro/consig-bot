@@ -61,11 +61,14 @@ poetry install
 
 Demora ~2 minutos na primeira vez.
 
-### 3. Instalar o browser do Playwright
+### 3. Instalar o browser do Playwright (dentro do pacote, para embarcar no .exe)
 
 ```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = "0"
 poetry run playwright install chromium
 ```
+
+> **CRÍTICO**: a variável `PLAYWRIGHT_BROWSERS_PATH=0` faz o Chromium ser instalado **dentro do pacote `playwright`** (em vez do default `%LOCALAPPDATA%\ms-playwright\`). Sem isso, o PyInstaller não embarca o browser e o `.exe` falha em runtime com `BrowserType.launch: Executable doesn't exist at ...\chrome-win\chrome.exe`.
 
 Baixa ~130 MB do Chromium. Demora ~1 minuto.
 
@@ -145,6 +148,7 @@ Zipa a pasta `consig-bot-windows` e manda para o usuário.
 | Antivírus bloqueia o `.exe` | PyInstaller onefile sem assinatura | Adicione exceção, ou use `--onedir` (rode `pyinstaller pyinstaller.spec --onedir ...`) |
 | `.exe` abre e fecha rápido | Erro no `config.json` | Rode pelo `executar.bat` (tem `pause`) ou pelo `cmd` manualmente |
 | `playwright: command not found` no passo 3 | `poetry install` falhou | Volte ao passo 2 e veja o erro |
+| `.exe` quebra com `BrowserType.launch: Executable doesn't exist at ...\chrome-win\chrome.exe` | Browser instalado fora do pacote | Refaça passo 3 com `$env:PLAYWRIGHT_BROWSERS_PATH = "0"` ANTES do `playwright install`, depois passo 4 |
 | `.exe` muito grande | Esperado — browser embutido | Use `--onedir` se quiser uma pasta em vez de um único arquivo (mesmo tamanho total, mas startup mais rápido) |
 
 ---
