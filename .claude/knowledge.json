@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "pattern-1778341649269",
+      "type": "pattern",
+      "name": "heavy-pipeline-2026-05-09-consig-bot-bootstrap.metrics",
+      "description": "Pipeline used 75 API calls. Consider splitting into smaller scope.",
+      "source": "session-knowledge",
+      "tags": [
+        "optimization",
+        "pipeline",
+        "prescriptive"
+      ],
+      "confidence": 0.6000000000000001,
+      "occurrences": 3,
+      "createdAt": "2026-05-09T15:47:29.268Z",
+      "updatedAt": "2026-05-13T01:13:35.700Z",
+      "lastSeen": "2026-05-13T01:13:35.700Z"
+    },
+    {
+      "id": "convention-1778341214848",
+      "type": "convention",
+      "name": "high-retry-2026-05-09-consig-bot-bootstrap.metrics",
+      "description": "Pipeline required 22 retries. Tool breakdown: {\"Write\":50,\"Edit\":14,\"Agent\":10,\"Bash\":1}",
+      "source": "session-knowledge",
+      "tags": [
+        "retry",
+        "pipeline",
+        "lesson",
+        "prescriptive"
+      ],
+      "confidence": 0.6000000000000001,
+      "occurrences": 3,
+      "createdAt": "2026-05-09T15:40:14.848Z",
+      "updatedAt": "2026-05-13T01:13:35.678Z",
+      "lastSeen": "2026-05-13T01:13:35.678Z"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "consig-bot"
+version = "0.1.0"
+description = "Multi-bot automation for credit consultations"
+authors = ["Reinaldo Ribeiro <reinaldo.david@competisistemas.com.br>"]
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.15"
+playwright = "~1.48"
+pydantic = ">=2.10,<3.0"
+loguru = "~0.7"
+rich = "~13.9"
+pandas = "~2.2"
+openpyxl = "~3.1"
+python-dotenv = "~1.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6"
+mypy = "^1.11"
+pytest = "^8.3"
+pyinstaller = "^6.10"
+
+[tool.poetry.scripts]
+consig-bot = "app.__main__:run"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
