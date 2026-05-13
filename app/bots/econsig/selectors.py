@@ -19,6 +19,7 @@ MENU_CONSULTAR_MARGEM = "a.link-menu[onclick*='consultarMargem']"
 PESQUISAR_BTN = "a#btnEnvia, [name='btnEnvia']"
 MSG_SUCCESS = "span#idMsgSuccessSession"
 MSG_ERROR = "span#idMsgErrorSession"
+DATA_LIST = "dl.data-list"  # Result page <dl> com dt/dd pares (margem, dados pessoais)
 
 # Text fragment constants for error classification
 CAPTCHA_INVALID_TEXT = "O código informado é inválido"

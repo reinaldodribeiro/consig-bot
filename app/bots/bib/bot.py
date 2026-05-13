@@ -81,9 +81,13 @@ class BibBot(BaseBot):
         logger.debug("BIB: URL pós-login: {}", page.url)
 
         if alert_message:
-            raise AuthenticationError(
-                f"BIB recusou o login: {alert_message[0]}"
-            )
+            msg = alert_message[0]
+            # Aviso de expiração de senha NÃO é rejeição — o login completou,
+            # o site só está alertando que a senha vai expirar em N dias.
+            if "expira" in msg.lower():
+                logger.warning("BIB: aviso ignorado (login OK): {}", msg)
+            else:
+                raise AuthenticationError(f"BIB recusou o login: {msg}")
 
         if self._needs_login(page):
             raise AuthenticationError(

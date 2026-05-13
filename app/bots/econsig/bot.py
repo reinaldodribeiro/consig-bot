@@ -287,20 +287,19 @@ class EconsigBot(BaseBot):
         with contextlib.suppress(Exception):
             page.wait_for_load_state("networkidle", timeout=15_000)
 
-        # Wait until the success or error span has actual content (postback may render after networkidle)
+        # Wait until either an error span has content OR the data-list <dl> appears (success)
         try:
             page.wait_for_function(
                 """() => {
-                    const s = document.querySelector('span#idMsgSuccessSession');
                     const e = document.querySelector('span#idMsgErrorSession');
-                    const sText = s ? (s.textContent || '').trim() : '';
                     const eText = e ? (e.textContent || '').trim() : '';
-                    return sText.length > 0 || eText.length > 0;
+                    const dl = document.querySelector('dl.data-list');
+                    return eText.length > 0 || (dl && dl.children.length > 0);
                 }""",
                 timeout=10_000,
             )
         except Exception as exc:
-            logger.debug("Econsig: timeout aguardando span de resultado: {}", exc)
+            logger.debug("Econsig: timeout aguardando resultado: {}", exc)
 
         # Check for session expiry after search
         if "autenticar" in page.url.lower():
@@ -335,28 +334,40 @@ class EconsigBot(BaseBot):
                 )
             raise ParseError(err)
 
-        # Parse success result
-        margens = parsers.parse_margens_success(page)
+        # Parse success result from the data-list <dl>
+        data = parsers.parse_consulta_success(page)
+        if data is None:
+            return EconsigResult(
+                row_index=row.row_index,
+                matricula=matricula,
+                nome=row.nome,
+                cpf=row.cpf,
+                margens=None,
+                status_consulta="erro",
+                observacao="Lista de dados não encontrada no resultado",
+                data_consulta=now_str(),
+            )
         return EconsigResult(
             row_index=row.row_index,
             matricula=matricula,
             nome=row.nome,
-            cpf=row.cpf,
-            margens=margens,
+            cpf=data["cpf"] or row.cpf,
+            data_nascimento=data["data_nascimento"],
+            margens=data["margens"],
             status_consulta="ok",
-            observacao="" if margens else "Tabela de margens não encontrada",
+            observacao="",
             data_consulta=now_str(),
         )
 
     def output_columns(self) -> list[str]:
         return [
-            "Matrícula", "Nome", "CPF",
-            "Margem Empréstimo", "Margem Cartão", "Data Carga",
+            "Matrícula", "Nome", "CPF", "Data Nascimento",
+            "Margem Empréstimo", "Margem Cartão",
             "Status Consulta", "Observação", "Data Consulta",
         ]
 
     def center_columns(self) -> list[str]:
-        return ["Matrícula", "CPF", "Margem Empréstimo", "Margem Cartão", "Data Carga"]
+        return ["Matrícula", "CPF", "Data Nascimento", "Margem Empréstimo", "Margem Cartão"]
 
     def expand_result(self, result: EconsigResult) -> list[dict[str, Any]]:  # type: ignore[override]
         m = result.margens
@@ -364,9 +375,9 @@ class EconsigBot(BaseBot):
             "Matrícula":         result.matricula,
             "Nome":              result.nome,
             "CPF":               result.cpf,
+            "Data Nascimento":   result.data_nascimento,
             "Margem Empréstimo": m.margem_emprestimo if m else "",
             "Margem Cartão":     m.margem_cartao if m else "",
-            "Data Carga":        m.data_carga if m else "",
             "Status Consulta":   result.status_consulta,
             "Observação":        result.observacao,
             "Data Consulta":     result.data_consulta,

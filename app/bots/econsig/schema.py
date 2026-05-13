@@ -26,7 +26,6 @@ class EconsigMargens(BaseModel):
     model_config = ConfigDict(extra="ignore")
     margem_emprestimo: str = ""
     margem_cartao: str = ""
-    data_carga: str = ""
 
 
 class EconsigResult(BaseModel):
@@ -35,6 +34,7 @@ class EconsigResult(BaseModel):
     matricula: str = ""
     nome: str = ""
     cpf: str = ""
+    data_nascimento: str = ""
     margens: EconsigMargens | None = None
     status_consulta: EconsigStatus = "ok"
     observacao: str = ""

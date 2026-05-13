@@ -1,7 +1,7 @@
 """Parsers — DOM extraction for Econsig. Pure functions, never navigate."""
 from __future__ import annotations
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypedDict
 from loguru import logger
 from app.bots.econsig import selectors as sel
 from app.bots.econsig.schema import EconsigMargens
@@ -10,49 +10,74 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 
-def parse_margens_success(page: Page) -> EconsigMargens | None:
-    """Read MSG_SUCCESS innerHTML and parse margem fields. Returns None if absent or empty."""
-    loc = page.locator(sel.MSG_SUCCESS)
-    count = loc.count()
-    if count == 0:
-        logger.info("parse_margens_success: span#idMsgSuccessSession NÃO existe no DOM")
+class EconsigConsultaDados(TypedDict):
+    margens: EconsigMargens
+    data_nascimento: str
+    cpf: str
+
+
+_DATA_LIST_JS = """
+() => {
+    const dl = document.querySelector('dl.data-list');
+    if (!dl) return null;
+    const out = {};
+    const kids = Array.from(dl.children);
+    for (let i = 0; i < kids.length - 1; i++) {
+        if (kids[i].tagName === 'DT' && kids[i+1].tagName === 'DD') {
+            const key = (kids[i].textContent || '').trim();
+            const value = (kids[i+1].textContent || '').replace(/\\u00a0/g, ' ').trim();
+            out[key] = value.replace(/\\s+/g, ' ');
+        }
+    }
+    return out;
+}
+"""
+
+
+def parse_consulta_success(page: Page) -> EconsigConsultaDados | None:
+    """Parse the result <dl class="data-list">.
+
+    Returns a dict with margens, data_nascimento, and cpf — or None if the <dl> is absent.
+    """
+    if page.locator(sel.DATA_LIST).count() == 0:
+        logger.info("parse_consulta_success: <dl.data-list> NÃO existe no DOM")
         return None
 
     try:
-        html = loc.first.inner_html(timeout=3000)
+        data = page.evaluate(_DATA_LIST_JS)
     except Exception as exc:
-        logger.warning("parse_margens_success: inner_html error: {}", exc)
+        logger.warning("parse_consulta_success: evaluate error: {}", exc)
         return None
 
-    text_only = re.sub(r"<[^>]+>", "", html).strip()
-    if not text_only:
-        logger.info("parse_margens_success: span existe mas está vazio")
+    if not data:
+        logger.info("parse_consulta_success: <dl.data-list> existe mas vazio")
         return None
 
-    logger.info("parse_margens_success: conteúdo bruto={!r}", text_only[:200])
+    logger.info("parse_consulta_success: campos lidos={!r}", list(data.keys()))
 
-    # Normalise <br> variants to newlines for easier regex matching
-    html_normalised = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+    # Helper: case-insensitive key lookup (labels may shift in capitalization)
+    def _get(label_fragment: str) -> str:
+        frag = label_fragment.lower()
+        for k, v in data.items():
+            if frag in k.lower():
+                return v
+        return ""
 
-    def _extract(pattern: str) -> str:
-        m = re.search(pattern, html_normalised, re.IGNORECASE)
-        if not m:
-            return ""
-        return m.group(1).strip()
+    nasc_cpf_raw = _get("data de nascimento")  # "23/03/1952 - 617.361.121-04"
+    parts = [p.strip() for p in nasc_cpf_raw.split(" - ", 1)]
+    data_nascimento = parts[0] if len(parts) >= 1 else ""
+    cpf = parts[1] if len(parts) >= 2 else ""
 
-    margem_emprestimo = _extract(r"MARGEM\s+EMPR[EÉ]STIMO\s*:\s*([^\n<]+)")
-    margem_cartao = _extract(r"MARGEM\s+CART[AÃ]O\s*:\s*([^\n<]+)")
-    data_carga = _extract(r"Data\s+da\s+Carga\s+das\s+Margens\s*:\s*([^\n<]+)")
+    margens = EconsigMargens(
+        margem_emprestimo=_get("margem empr"),  # matches EMPRÉSTIMO / EMPRESTIMO
+        margem_cartao=_get("margem cart"),       # matches CARTÃO / CARTAO
+    )
 
     logger.info(
-        "parse_margens_success: emprestimo={!r} cartao={!r} data_carga={!r}",
-        margem_emprestimo, margem_cartao, data_carga,
+        "parse_consulta_success: emprestimo={!r} cartao={!r} nascimento={!r} cpf={!r}",
+        margens.margem_emprestimo, margens.margem_cartao, data_nascimento, cpf,
     )
-    return EconsigMargens(
-        margem_emprestimo=margem_emprestimo,
-        margem_cartao=margem_cartao,
-        data_carga=data_carga,
-    )
+    return {"margens": margens, "data_nascimento": data_nascimento, "cpf": cpf}
 
 
 def parse_error_message(page: Page) -> str | None:

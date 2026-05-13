@@ -52,10 +52,12 @@ def _render_image_in_terminal(path: Path) -> bool:
             warnings.simplefilter("ignore")  # silence "not in a terminal" warning
             pil_img = Image.open(path)
             # Captchas are detailed — render tall (~20 rows) so distorted chars are legible.
-            # Block chars are ~1:2 (height:width), so target_w ≈ aspect * target_h * 2.
+            # Modest size — large enough to read distorted chars, small enough not to dominate the terminal.
+            # Block chars are ~1:2 (h:w), so target_w ≈ aspect * target_h * 2.
             w, h = pil_img.size
-            target_h = 20
-            target_w = max(40, int(w * (target_h * 2) / max(h, 1)))
+            target_h = 6
+            calculated_w = int(w * (target_h * 2) / max(h, 1))
+            target_w = max(24, min(36, calculated_w))
             img = AutoImage(pil_img, width=target_w, height=target_h)
             _console.print("")
             print(img)
