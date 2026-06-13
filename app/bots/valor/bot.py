@@ -161,38 +161,36 @@ class ValorBot(BaseBot):
             self._save_failure_artifacts(page, label="iframe_timeout")
             raise ParseError(f"iframe de resultado não apareceu após consulta: {exc}") from exc
 
-        # Espera o frame navegar para a URL com o CPF desta linha.
-        # `Frame.wait_for_url` checa a URL REAL do documento dentro do iframe,
-        # não o atributo `src` (que pode ficar defasado em form-posts).
-        frame = page.frame(name=sel.IFRAME_RESULT_NAME)
-        if frame is None:
-            self._save_failure_artifacts(page, label="iframe_none")
-            raise ParseError("frame 'rbmcont' não encontrado após iframe aparecer na DOM")
-
+        # Polling: espera o frame rbmcont ter URL contendo `cod={cpf}`.
+        # Não usamos Frame.wait_for_url porque o predicate só dispara em
+        # `framenavigated` events — se a navegação acontece antes do listener
+        # ficar pronto, ele perde o evento e dá timeout mesmo com a URL certa.
         cpf_marker = f"cod={row.cpf}"
-        try:
-            frame.wait_for_url(
-                lambda url: cpf_marker in (url or ""),
-                timeout=20_000,
-            )
-        except Exception as exc:
-            current = ""
-            with contextlib.suppress(Exception):
-                current = frame.url or ""
+        deadline_ms = 20_000
+        poll_ms = 150
+        elapsed = 0
+        frame = None
+        last_url = ""
+        while elapsed < deadline_ms:
+            f = page.frame(name=sel.IFRAME_RESULT_NAME)
+            if f is not None:
+                with contextlib.suppress(Exception):
+                    last_url = f.url or ""
+                if cpf_marker in last_url:
+                    frame = f
+                    break
+            page.wait_for_timeout(poll_ms)
+            elapsed += poll_ms
+
+        if frame is None:
             self._save_failure_artifacts(page, label="iframe_navigate_timeout")
             raise ParseError(
                 f"iframe rbmcont não navegou para CPF {row.cpf} "
-                f"(URL anterior={prev_url[:120]!r}, URL atual={current[:120]!r}): {exc}"
-            ) from exc
-
-        # Re-pega o frame (referência pode ter sido atualizada após navegação)
-        frame = page.frame(name=sel.IFRAME_RESULT_NAME)
-        if frame is None:
-            self._save_failure_artifacts(page, label="iframe_gone")
-            raise ParseError("frame 'rbmcont' desapareceu após navegação")
+                f"(URL anterior={prev_url[:120]!r}, última URL={last_url[:120]!r})"
+            )
         logger.info(
             "Valor: iframe rbmcont navegou para CPF {} (URL: {})",
-            row.cpf, (frame.url or "")[:120],
+            row.cpf, last_url[:120],
         )
 
         # Aguarda o documento do iframe carregar completamente
