@@ -50,11 +50,8 @@ CONTRACTS_TABLE_ROWS = f"{CONTRACTS_TABLE} tbody tr"
 ERROR_TOAST = ".toast, .alert, .swal2-popup, .swal-text, .modal-message"
 NO_INFO_MESSAGE_TEXT = "Não existe informações"
 
-# === Parcelas (parcelas.php) — consultado via HTTP GET direto ===
-# Estrutura: #pn_parcelas_table_detail > tr[id^="cronograma_"] > td > div.linha
-# div[0]=Contrato, div[1]=NDoc, div[2]=Vencimento, div[3]=Situação, div[4]=Valor
-
-
-def contract_cell_by_row(row: int) -> str:
-    """Cell ID usado pela grade para abrir o modal de parcelas (coluna 0 = Contrato)."""
-    return f"#JTPlatinumGrid2_cell_{row}_0"
+# === Parcelas inline (tabela na própria tela de resultado, dentro do iframe rbmcont) ===
+# Estrutura: #dbrp_parcelas_table_detail > tr[id^="cronograma_"] > td > div.linha > div
+# div[0]=Contrato, div[1]=NDoc, div[2]=Vencimento
+DBRP_PARCELAS_TABLE = "#dbrp_parcelas_table_detail"
+DBRP_PARCELAS_ROWS = '#dbrp_parcelas_table_detail tr[id^="cronograma_"]'

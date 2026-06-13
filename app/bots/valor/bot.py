@@ -49,9 +49,6 @@ class ValorBot(BaseBot):
         self._ignore_status: tuple[str, ...] = tuple(
             s.upper() for s in extras.get("ignore_status", _IGNORE_STATUS_DEFAULT)
         )
-        # URL base para parcelas.php (mesmo domínio/caminho que dashboard)
-        _base = self._dashboard_url.rsplit("/", 1)[0]
-        self._parcelas_base_url: str = extras.get("parcelas_url", f"{_base}/parcelas.php")
 
     # ---- BaseBot interface --------------------------------------------------
 
@@ -137,6 +134,14 @@ class ValorBot(BaseBot):
         if not row.cpf or len(row.cpf) != 11:
             return self._error_result(row, "ok", f"CPF inválido: {row.cpf!r}")
 
+        # Captura URL atual do iframe rbmcont (se já existe de uma consulta
+        # anterior). O site REAPROVEITA esse iframe entre CPFs — sem essa
+        # comparação a próxima query pode ler o DOM da consulta passada.
+        prev_frame = page.frame(name=sel.IFRAME_RESULT_NAME)
+        prev_url = prev_frame.url if prev_frame else ""
+        if prev_url:
+            logger.debug("Valor: URL anterior do rbmcont: {}", prev_url[:120])
+
         if not page.locator(sel.CSSENHA_INPUT).is_visible():
             page.click(sel.MENU_CONSULTA_SALDO)
             try:
@@ -145,6 +150,7 @@ class ValorBot(BaseBot):
                 self._save_failure_artifacts(page, label="menu_open_fail")
                 raise ParseError(f"Campo CPF não apareceu após abrir menu: {exc}") from exc
 
+        page.fill(sel.CSSENHA_INPUT, "")
         page.fill(sel.CSSENHA_INPUT, row.cpf)
         page.click(sel.BTCONSULTASALDO)
 
@@ -155,12 +161,43 @@ class ValorBot(BaseBot):
             self._save_failure_artifacts(page, label="iframe_timeout")
             raise ParseError(f"iframe de resultado não apareceu após consulta: {exc}") from exc
 
-        # Entra no contexto do iframe
+        # Espera o frame navegar para a URL com o CPF desta linha.
+        # `Frame.wait_for_url` checa a URL REAL do documento dentro do iframe,
+        # não o atributo `src` (que pode ficar defasado em form-posts).
         frame = page.frame(name=sel.IFRAME_RESULT_NAME)
         if frame is None:
             self._save_failure_artifacts(page, label="iframe_none")
             raise ParseError("frame 'rbmcont' não encontrado após iframe aparecer na DOM")
 
+        cpf_marker = f"cod={row.cpf}"
+        try:
+            frame.wait_for_url(
+                lambda url: cpf_marker in (url or ""),
+                timeout=20_000,
+            )
+        except Exception as exc:
+            current = ""
+            with contextlib.suppress(Exception):
+                current = frame.url or ""
+            self._save_failure_artifacts(page, label="iframe_navigate_timeout")
+            raise ParseError(
+                f"iframe rbmcont não navegou para CPF {row.cpf} "
+                f"(URL anterior={prev_url[:120]!r}, URL atual={current[:120]!r}): {exc}"
+            ) from exc
+
+        # Re-pega o frame (referência pode ter sido atualizada após navegação)
+        frame = page.frame(name=sel.IFRAME_RESULT_NAME)
+        if frame is None:
+            self._save_failure_artifacts(page, label="iframe_gone")
+            raise ParseError("frame 'rbmcont' desapareceu após navegação")
+        logger.info(
+            "Valor: iframe rbmcont navegou para CPF {} (URL: {})",
+            row.cpf, (frame.url or "")[:120],
+        )
+
+        # Aguarda o documento do iframe carregar completamente
+        with contextlib.suppress(Exception):
+            frame.wait_for_load_state("load", timeout=15_000)
         with contextlib.suppress(Exception):
             frame.wait_for_load_state("networkidle", timeout=10_000)
 
@@ -190,8 +227,40 @@ class ValorBot(BaseBot):
         contracts = parsers.parse_contracts_table(frame)
         logger.info("Valor: linha {} — {} contratos", row.row_index, len(contracts))
 
+        # Tabela inline de parcelas é a fonte de verdade — somente contratos
+        # presentes nela devem ser exportados (a grade JTPlatinumGrid2 lista
+        # também contratos finalizados/cancelados que não interessam).
+        # Aguarda a TABELA (não as rows): o prefixo das tr é desconhecido até
+        # o parser inspecionar a DOM real.
+        with contextlib.suppress(Exception):
+            frame.wait_for_selector(sel.DBRP_PARCELAS_TABLE, state="attached", timeout=10_000)
+        grouped = parsers.parse_parcelas_aggregated(frame)
+
+        # Grade retorna contrato com zero-padding (ex: "00000505835"); tabela
+        # inline retorna sem padding (ex: "505835"). Normaliza para o match.
+        grouped_norm = {k.lstrip("0"): v for k, v in grouped.items()}
+        logger.info(
+            "Valor: contratos grade={} | inline={} | normalizados_inline={}",
+            [c.contrato for c in contracts],
+            list(grouped.keys()),
+            list(grouped_norm.keys()),
+        )
+        filtered: list[ValorContract] = []
         for c in contracts:
-            c.data_vencimento = self._fetch_first_vencimento(frame, c.contrato)
+            info = grouped_norm.get(c.contrato.lstrip("0"))
+            if info is None:
+                logger.debug("Valor: contrato {} ausente da tabela inline — ignorado", c.contrato)
+                continue
+            first_venc, count = info
+            c.data_vencimento = first_venc
+            if count > 0:
+                c.parcelas = str(count)
+            filtered.append(c)
+        logger.info(
+            "Valor: linha {} — {} contratos na grade, {} com parcelas inline",
+            row.row_index, len(contracts), len(filtered),
+        )
+        contracts = filtered
 
         return ValorResult(
             row_index=row.row_index,
@@ -254,30 +323,6 @@ class ValorBot(BaseBot):
     def _handle_captcha_if_present(self, page, reason: str) -> None:
         if self._has_captcha(page):
             self._captcha.solve(page, reason=reason)
-
-    def _fetch_first_vencimento(self, frame, contrato: str) -> str | None:
-        """Navega o frame rbmcont para parcelas.php?codoper=XXXXX e extrai NDoc=1.
-
-        O JS da página (parcelasJSLoad) carrega as linhas dinamicamente;
-        por isso é necessário navegar o frame real em vez de fazer HTTP GET.
-        """
-        codoper = contrato.lstrip("0").zfill(11)
-        url = f"{self._parcelas_base_url}?codoper={codoper}"
-        try:
-            # parcelas.php carrega dados via JS — navega o próprio frame para executar o JS
-            frame.goto(url, wait_until="domcontentloaded", timeout=15_000)
-            with contextlib.suppress(Exception):
-                frame.wait_for_load_state("networkidle", timeout=10_000)
-            frame.wait_for_selector(
-                '#pn_parcelas_table_detail tr[id^="cronograma_"]',
-                state="visible", timeout=12_000,
-            )
-            vencimento = parsers.parse_first_due_date(frame)
-            logger.debug("_fetch_first_vencimento {}: {}", codoper, vencimento)
-            return vencimento
-        except Exception as exc:
-            logger.debug("_fetch_first_vencimento {} erro: {}", codoper, exc)
-            return None
 
     def _error_result(self, row: ValorInputRow, status: str, observacao: str) -> ValorResult:
         return ValorResult(
